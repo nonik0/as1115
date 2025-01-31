@@ -1,0 +1,16 @@
+[package] 
+name = "as1115"
+version = "0.1.0"
+edition = "2021"
+authors = ["nonik0"]
+categories = ["embedded", "no-std"]
+description = "Rust driver for ams AS1115 LED Driver IC"
+license = "MIT"
+repository = "https://github.com/nonik0/as1115"
+readme = "README.md"
+
+[dependencies]
+embedded-hal = "1.0.0"
+
+#[[example]]
+#name = "uno"
