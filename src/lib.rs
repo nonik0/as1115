@@ -1,98 +1,26 @@
 #![no_std]
 
-// TODO: finish rest of functionality
-// TODO: add documentation/comments
+mod constants;
 
+pub use constants::*;
 use embedded_hal::i2c::I2c;
 use num_traits::ToPrimitive;
 
-// TODO: move to separate file for better organization/readability
-pub mod constants {
-    pub const DEFAULT_ADDRESS: u8 = 0x00;
-    pub const MAX_DIGITS: u8 = 8;
-    pub const MAX_INTENSITY: u8 = 15; // 4 bits
-
-    pub mod decode_mode {
-        pub const NO_DECODE: u8 = 0x00;
-    }
-
-    pub mod self_addressing {
-        pub const FACTORY_SET_ADDR: u8 = 0x00;
-        pub const USER_SET_ADDR: u8 = 0x01;
-    }
-
-    pub mod shutdown_mode {
-        pub const SHUTDOWN_MODE: u8 = 0x00;
-        pub const NORMAL_OPERATION: u8 = 0x01;
-        pub const RESET_FEATURE: u8 = 0x00;
-        pub const PRESERVE_FEATURE: u8 = 0x80;
-    }
-}
-
-pub const DOT_MASK: u8 = 0x80;
-pub const NUMBERS: [u8; 16] = [
-    0x7E, 0x30, 0x6D, 0x79, 0x33, 0x5B, 0x5F, 0x70, 0x7F, 0x7B, 0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47,
-];
-pub const LETTERS: [u8; 26] = [
-    0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47, 0x5E, 0x37, 0x30, 0x3C, 0x2F, 0x0E, 0x54, 0x15, 0x1D, 0x67,
-    0x73, 0x05, 0x5B, 0x0F, 0x3E, 0x1C, 0x2A, 0x49, 0x3B, 0x25,
-];
-
-pub mod addresses {
-    pub const DIGIT_OFFSET: u8 = 0x01;
-    pub const DECODE_MODE: u8 = 0x09;
-    pub const GLOBAL_INTENSITY: u8 = 0x0A;
-    pub const SCAN_LIMIT: u8 = 0x0B;
-    pub const SHUTDOWN: u8 = 0x0C;
-    pub const SELF_ADDRESSING: u8 = 0x2D; // bit 5 is set
-    pub const FEATURE: u8 = 0x0E;
-    pub const DISPLAY_TEST_MODE: u8 = 0x0F;
-    pub const DIG01_INTENSITY: u8 = 0x10;
-    pub const DIG23_INTENSITY: u8 = 0x11;
-    pub const DIG45_INTENSITY: u8 = 0x12;
-    pub const DIG67_INTENSITY: u8 = 0x13;
-    pub const DIAG_DIGIT_0: u8 = 0x14;
-    pub const DIAG_DIGIT_1: u8 = 0x15;
-    pub const DIAG_DIGIT_2: u8 = 0x16;
-    pub const DIAG_DIGIT_3: u8 = 0x17;
-    pub const DIAG_DIGIT_4: u8 = 0x18;
-    pub const DIAG_DIGIT_5: u8 = 0x19;
-    pub const DIAG_DIGIT_6: u8 = 0x1A;
-    pub const DIAG_DIGIT_7: u8 = 0x1B;
-    pub const KEY_A: u8 = 0x1C;
-    pub const KEY_B: u8 = 0x1D;
-}
-
-// TODO: move to separate file for better organization/readability
-#[derive(Clone, Copy, Debug)]
-pub enum AS1115Error<E> {
-    I2cError(E),
-    InvalidValue,
-    InvalidLocation(u8),
-}
-
-impl<E> From<E> for AS1115Error<E> {
-    fn from(error: E) -> Self {
-        AS1115Error::I2cError(error)
-    }
-}
-
-// TODO: num_digits should be a const generic?
-pub struct AS1115<I2C> {
+pub struct AS1115<I2C, const NUM_DIGITS: u8> {
     pub i2c: I2C,
     pub address: u8,
-    pub num_digits: u8,
+    intensity: [u8; MAX_DIGITS as usize], // ideally NUM_DIGITS
 }
 
-impl<I2C, E> AS1115<I2C>
+impl<I2C, E, const NUM_DIGITS: u8> AS1115<I2C, NUM_DIGITS>
 where
     I2C: I2c<Error = E>,
 {
     pub fn new(i2c: I2C, address: u8) -> Self {
         Self {
             i2c,
-            address: address,
-            num_digits: 0,
+            address,
+            intensity: [0; MAX_DIGITS as usize],
         }
     }
 
@@ -100,32 +28,30 @@ where
         self.i2c
     }
 
-    pub fn init(&mut self, num_digits: u8, intensity: u8) -> Result<(), AS1115Error<E>> {
-        self.num_digits = constants::MAX_DIGITS.min(num_digits);
-
+    pub fn init(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
         self.write_register_to_addr(
-            constants::DEFAULT_ADDRESS,
-            addresses::SHUTDOWN,
-            constants::shutdown_mode::NORMAL_OPERATION | constants::shutdown_mode::RESET_FEATURE,
+            DEFAULT_ADDRESS,
+            register::SHUTDOWN_MODE,
+            register::shutdown_mode::NORMAL_OPERATION | register::shutdown_mode::RESET_FEATURE,
         )?;
 
-        if self.address != constants::DEFAULT_ADDRESS {
+        if self.address != DEFAULT_ADDRESS {
             self.write_register_to_addr(
-                constants::DEFAULT_ADDRESS,
-                addresses::SELF_ADDRESSING,
-                constants::self_addressing::USER_SET_ADDR,
+                DEFAULT_ADDRESS,
+                register::SELF_ADDRESSING,
+                register::self_addressing::USER_SET_ADDR,
             )?;
         }
 
-        self.write_register(addresses::DECODE_MODE, constants::decode_mode::NO_DECODE)?;
-        self.write_register(addresses::SCAN_LIMIT, num_digits - 1)?;
+        self.write_register(register::DECODE_MODE, register::decode_mode::NO_DECODE)?;
+        self.write_register(register::SCAN_LIMIT, NUM_DIGITS - 1)?;
         self.set_intensity(intensity)?;
 
         Ok(())
     }
 
     pub fn clear(&mut self) -> Result<(), AS1115Error<E>> {
-        for i in 0..self.num_digits {
+        for i in 0..NUM_DIGITS {
             self.set_digit_data(i, 0)?;
         }
         Ok(())
@@ -142,7 +68,7 @@ where
             };
             self.set_digit_data(index, segment_data)?;
             index += 1;
-            if index >= self.num_digits {
+            if index >= NUM_DIGITS {
                 break;
             }
         }
@@ -160,7 +86,7 @@ where
             };
             self.set_digit_data(index, segment_data)?;
             index += 1;
-            if index >= self.num_digits {
+            if index >= NUM_DIGITS {
                 break;
             }
         }
@@ -172,28 +98,131 @@ where
         T: ToPrimitive,
     {
         let mut num = number.to_u32().ok_or(AS1115Error::InvalidValue)?;
-        for i in 0..self.num_digits {
+        for i in 0..NUM_DIGITS {
             let digit = num % 10;
-            self.set_digit_data(self.num_digits - 1 - i, NUMBERS[digit as usize])?;
+            self.set_digit_data(NUM_DIGITS - 1 - i, NUMBERS[digit as usize])?;
             num /= 10;
         }
         Ok(())
     }
 
+    pub fn display_hex_number<T>(&mut self, number: T) -> Result<(), AS1115Error<E>>
+    where
+        T: ToPrimitive,
+    {
+        let mut num = number.to_u32().ok_or(AS1115Error::InvalidValue)?;
+        for i in 0..NUM_DIGITS {
+            let digit = num % 16;
+            let value = if digit < 10 {
+                NUMBERS[digit as usize]
+            } else {
+                LETTERS[(digit - 10) as usize]
+            };
+            self.set_digit_data(NUM_DIGITS - 1 - i, value)?;
+            num /= 16;
+        }
+        Ok(())
+    }
+
+    pub fn read_keys(&mut self) -> Result<u16, AS1115Error<E>> {
+        let mut key_a = self.read_register(register::KEY_A)?;
+        let key_b = self.read_register(register::KEY_B)?;
+
+        // clear bits used for SEGG and SEGF pins on KEYA if self-addressing is enabled
+        if self.address != DEFAULT_ADDRESS {
+            key_a &= 0xFC;
+        }
+
+        Ok((key_a as u16) << 8 | (key_b as u16))
+    }
+
     pub fn set_digit_data(&mut self, digit: u8, value: u8) -> Result<(), AS1115Error<E>> {
-        if digit >= self.num_digits {
+        if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
         }
-        self.write_register(addresses::DIGIT_OFFSET + digit, value)?;
+        self.write_register(register::DIGIT_OFFSET + digit, value)?;
         Ok(())
     }
 
     pub fn set_intensity(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
-        if intensity > constants::MAX_INTENSITY {
+        if intensity > MAX_INTENSITY {
             return Err(AS1115Error::InvalidValue);
         }
-        self.write_register(addresses::GLOBAL_INTENSITY, intensity)?;
+        for i in 0..NUM_DIGITS {
+            self.intensity[i as usize] = intensity;
+        }
+        self.write_register(register::GLOBAL_INTENSITY, intensity)?;
         Ok(())
+    }
+
+    pub fn set_intensity_for_digit(
+        &mut self,
+        digit: u8,
+        intensity: u8,
+    ) -> Result<(), AS1115Error<E>> {
+        let num_digits = if NUM_DIGITS > MAX_DIGITS {
+            MAX_DIGITS
+        } else {
+            NUM_DIGITS
+        };
+        if digit >= num_digits {
+            return Err(AS1115Error::InvalidLocation(digit));
+        }
+        if intensity > MAX_INTENSITY {
+            return Err(AS1115Error::InvalidValue);
+        }
+
+        self.intensity[digit as usize] = intensity;
+
+        let register = match digit {
+            0..=1 => register::DIG01_INTENSITY,
+            2..=3 => register::DIG23_INTENSITY,
+            4..=5 => register::DIG45_INTENSITY,
+            6..=7 => register::DIG67_INTENSITY,
+            _ => return Err(AS1115Error::InvalidLocation(digit)),
+        };
+
+        // intensity register is read-only so we need a local cache to avoid overwriting paired digit's intensity
+        let reg_value = if digit % 2 == 0 {
+            self.intensity[(digit + 1) as usize] << 4 | self.intensity[digit as usize]
+        } else {
+            self.intensity[digit as usize] << 4 | self.intensity[(digit - 1) as usize]
+        };
+
+        self.write_register(register, reg_value)?;
+        Ok(())
+    }
+
+    pub fn rset_test_open(&mut self) -> Result<bool, AS1115Error<E>> {
+        Ok((self.read_register(register::DISPLAY_TEST_MODE)?
+            & register::display_test_mode::RSET_OPEN)
+            != 0)
+    }
+
+    pub fn rset_test_short(&mut self) -> Result<bool, AS1115Error<E>> {
+        Ok((self.read_register(register::DISPLAY_TEST_MODE)?
+            & register::display_test_mode::RSET_SHORT)
+            != 0)
+    }
+
+    pub fn visual_test(&mut self, stop: bool) -> Result<(), AS1115Error<E>> {
+        let mut test_mode = self.read_register(register::DISPLAY_TEST_MODE)?;
+
+        if !stop {
+            test_mode &= !register::display_test_mode::DISP_TEST;
+        } else {
+            test_mode |= register::display_test_mode::DISP_TEST;
+        }
+
+        self.write_register(register::DISPLAY_TEST_MODE, test_mode)?;
+        Ok(())
+    }
+
+    fn read_register(&mut self, register: u8) -> Result<u8, AS1115Error<E>> {
+        let mut buffer = [0; 1];
+        self.i2c
+            .write_read(self.address, &[register], &mut buffer)?;
+        Ok(buffer[0])
     }
 
     fn write_register(&mut self, register: u8, value: u8) -> Result<(), AS1115Error<E>> {
@@ -209,5 +238,18 @@ where
     ) -> Result<(), AS1115Error<E>> {
         self.i2c.write(address, &[register, value])?;
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum AS1115Error<E> {
+    I2cError(E),
+    InvalidValue,
+    InvalidLocation(u8),
+}
+
+impl<E> From<E> for AS1115Error<E> {
+    fn from(error: E) -> Self {
+        AS1115Error::I2cError(error)
     }
 }
