@@ -4,11 +4,13 @@
 // TODO: add documentation/comments
 
 use embedded_hal::i2c::I2c;
+use num_traits::ToPrimitive;
 
 // TODO: move to separate file for better organization/readability
 pub mod constants {
     pub const DEFAULT_ADDRESS: u8 = 0x00;
     pub const MAX_DIGITS: u8 = 8;
+    pub const MAX_INTENSITY: u8 = 15; // 4 bits
 
     pub mod decode_mode {
         pub const NO_DECODE: u8 = 0x00;
@@ -65,6 +67,7 @@ pub mod addresses {
 #[derive(Clone, Copy, Debug)]
 pub enum AS1115Error<E> {
     I2cError(E),
+    InvalidValue,
     InvalidLocation(u8),
 }
 
@@ -164,8 +167,11 @@ where
         Ok(())
     }
 
-    pub fn display_number(&mut self, number: u16) -> Result<(), AS1115Error<E>> {
-        let mut num = number;
+    pub fn display_number<T>(&mut self, number: T) -> Result<(), AS1115Error<E>>
+    where
+        T: ToPrimitive,
+    {
+        let mut num = number.to_u32().ok_or(AS1115Error::InvalidValue)?;
         for i in 0..self.num_digits {
             let digit = num % 10;
             self.set_digit_data(self.num_digits - 1 - i, NUMBERS[digit as usize])?;
@@ -183,7 +189,9 @@ where
     }
 
     pub fn set_intensity(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
-        // TODO: max intensity?
+        if intensity > constants::MAX_INTENSITY {
+            return Err(AS1115Error::InvalidValue);
+        }
         self.write_register(addresses::GLOBAL_INTENSITY, intensity)?;
         Ok(())
     }
