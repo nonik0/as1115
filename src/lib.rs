@@ -16,6 +16,7 @@ impl<I2C, E, const NUM_DIGITS: u8> AS1115<I2C, NUM_DIGITS>
 where
     I2C: I2c<Error = E>,
 {
+    /// Create a new AS1115 instance with the given I2C interface and address.
     pub fn new(i2c: I2C, address: u8) -> Self {
         Self {
             i2c,
@@ -24,10 +25,12 @@ where
         }
     }
 
+    /// Destroy the AS1115 instance and return the underlying I2C interface.
     pub fn destroy(self) -> I2C {
         self.i2c
     }
 
+    /// Initialize the AS1115 with the given global intensity.
     pub fn init(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
         self.write_register_to_addr(
             DEFAULT_ADDRESS,
@@ -50,6 +53,7 @@ where
         Ok(())
     }
 
+    /// Clear all digit data.
     pub fn clear(&mut self) -> Result<(), AS1115Error<E>> {
         for i in 0..NUM_DIGITS {
             self.set_digit_data(i, 0)?;
@@ -57,6 +61,7 @@ where
         Ok(())
     }
 
+    /// Display janky ASCII characters on the seven-segment digits.
     pub fn display_ascii(&mut self, bytes: &[u8]) -> Result<(), AS1115Error<E>> {
         let mut index = 0;
         for c in bytes {
@@ -75,55 +80,44 @@ where
         Ok(())
     }
 
-    pub fn display_string(&mut self, string: &str) -> Result<(), AS1115Error<E>> {
-        let mut index = 0;
-        for c in string.chars() {
-            let segment_data = match c {
-                '0'..='9' => NUMBERS[(c as u8 - b'0') as usize],
-                'a'..='z' => LETTERS[(c as u8 - b'a') as usize],
-                'A'..='Z' => LETTERS[(c as u8 - b'A') as usize],
-                _ => 0,
-            };
-            self.set_digit_data(index, segment_data)?;
-            index += 1;
-            if index >= NUM_DIGITS {
-                break;
-            }
-        }
-        Ok(())
-    }
-
+    /// Display a number on the seven-segment digits.
     pub fn display_number<T>(&mut self, number: T) -> Result<(), AS1115Error<E>>
     where
         T: ToPrimitive,
     {
         let mut num = number.to_u32().ok_or(AS1115Error::InvalidValue)?;
         for i in 0..NUM_DIGITS {
-            let digit = num % 10;
-            self.set_digit_data(NUM_DIGITS - 1 - i, NUMBERS[digit as usize])?;
+            self.set_digit_data(NUM_DIGITS - 1 - i, NUMBERS[(num % 10) as usize])?;
             num /= 10;
         }
         Ok(())
     }
 
+    /// Display a hexadecimal number on the seven-segment digits.
     pub fn display_hex_number<T>(&mut self, number: T) -> Result<(), AS1115Error<E>>
     where
         T: ToPrimitive,
     {
         let mut num = number.to_u32().ok_or(AS1115Error::InvalidValue)?;
         for i in 0..NUM_DIGITS {
-            let digit = num % 16;
-            let value = if digit < 10 {
-                NUMBERS[digit as usize]
-            } else {
-                LETTERS[(digit - 10) as usize]
-            };
-            self.set_digit_data(NUM_DIGITS - 1 - i, value)?;
+            self.set_digit_data(NUM_DIGITS - 1 - i, NUMBERS[(num % 16) as usize])?;
             num /= 16;
         }
         Ok(())
     }
 
+    /// Display raw segment data on the seven-segment digits.
+    pub fn display_raw(&mut self, segments: &[u8]) -> Result<(), AS1115Error<E>> {
+        for (index, &segment) in segments.iter().enumerate() {
+            self.set_digit_data(index as u8, segment)?;
+            if index as u8 >= NUM_DIGITS {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Read keyscan data from 16 keys.
     pub fn read_keys(&mut self) -> Result<u16, AS1115Error<E>> {
         let mut key_a = self.read_register(register::KEY_A)?;
         let key_b = self.read_register(register::KEY_B)?;
@@ -136,6 +130,7 @@ where
         Ok((key_a as u16) << 8 | (key_b as u16))
     }
 
+    /// Set the raw segment data for a specific digit.
     pub fn set_digit_data(&mut self, digit: u8, value: u8) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
@@ -144,6 +139,7 @@ where
         Ok(())
     }
 
+    /// Set the global intensity for all digits.
     pub fn set_intensity(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
         if intensity > MAX_INTENSITY {
             return Err(AS1115Error::InvalidValue);
@@ -155,6 +151,7 @@ where
         Ok(())
     }
 
+    /// Set the intensity for a specific digit.
     pub fn set_intensity_for_digit(
         &mut self,
         digit: u8,
@@ -193,18 +190,21 @@ where
         Ok(())
     }
 
+    /// Tests whether external resistor Rset is open.
     pub fn rset_test_open(&mut self) -> Result<bool, AS1115Error<E>> {
         Ok((self.read_register(register::DISPLAY_TEST_MODE)?
             & register::display_test_mode::RSET_OPEN)
             != 0)
     }
 
+    /// Tests whether external resistor Rset is shorted.
     pub fn rset_test_short(&mut self) -> Result<bool, AS1115Error<E>> {
         Ok((self.read_register(register::DISPLAY_TEST_MODE)?
             & register::display_test_mode::RSET_SHORT)
             != 0)
     }
 
+    /// Tests all LED segments (all on).
     pub fn visual_test(&mut self, stop: bool) -> Result<(), AS1115Error<E>> {
         let mut test_mode = self.read_register(register::DISPLAY_TEST_MODE)?;
 

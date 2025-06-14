@@ -1,7 +1,7 @@
 pub const DEFAULT_ADDRESS: u8 = 0x00;
 pub const MAX_DIGITS: u8 = 8;
 pub const MAX_INTENSITY: u8 = 15; // 4 bits
-//pub const DOT_MASK: u8 = 0x80;
+                                  //pub const DOT_MASK: u8 = 0x80;
 pub const NUMBERS: [u8; 16] = [
     0x7E, 0x30, 0x6D, 0x79, 0x33, 0x5B, 0x5F, 0x70, 0x7F, 0x7B, 0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47,
 ];
@@ -9,6 +9,18 @@ pub const LETTERS: [u8; 26] = [
     0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47, 0x5E, 0x37, 0x30, 0x3C, 0x2F, 0x0E, 0x54, 0x15, 0x1D, 0x67,
     0x73, 0x05, 0x5B, 0x0F, 0x3E, 0x1C, 0x2A, 0x49, 0x3B, 0x25,
 ];
+
+#[allow(dead_code)]
+pub mod segments {
+    pub const DP: u8 = 0x80; // Decimal point
+    pub const A: u8 = 0x40; // Segment A (top)
+    pub const B: u8 = 0x20; // Segment B (top right)
+    pub const C: u8 = 0x10; // Segment C (bottom right)
+    pub const D: u8 = 0x08; // Segment D (bottom)
+    pub const E: u8 = 0x04; // Segment E (bottom left)
+    pub const F: u8 = 0x02; // Segment F (top left)
+    pub const G: u8 = 0x01; // Segment G (middle)
+}
 
 #[allow(dead_code)]
 pub mod register {
@@ -76,5 +88,4 @@ pub mod register {
         pub const RESET_FEATURE: u8 = 0x00; // bit 7 clear: reset feature register to default settings
         pub const PRESERVE_FEATURE: u8 = 0x80; // bit 7 set: feature register unchanged
     }
-
 }
