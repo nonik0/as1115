@@ -30,7 +30,6 @@ impl<E> From<E> for AS1115Error<E> {
     }
 }
 
-
 pub struct AS1115<I2C, const NUM_DIGITS: u8> {
     pub i2c: I2C,
     pub address: u8,
@@ -47,6 +46,40 @@ where
             "NUM_DIGITS must be between 1 and 8"
         );
     };
+
+    const fn const_pow(base: u32, exp: u32) -> u32 {
+        let mut result = 1;
+        let mut i = 0;
+        while i < exp {
+            result *= base;
+            i += 1;
+        }
+        result
+    }
+
+    const fn max_unsigned_decimal() -> u32 {
+        Self::const_pow(10, NUM_DIGITS as u32) - 1
+    }
+
+    const fn max_signed_decimal() -> i32 {
+        if NUM_DIGITS == 1 {
+            9 // No space for minus sign in 1-digit display
+        } else {
+            (Self::const_pow(10, (NUM_DIGITS - 1) as u32) - 1) as i32
+        }
+    }
+
+    const fn max_unsigned_hex() -> u32 {
+        Self::const_pow(16, NUM_DIGITS as u32) - 1
+    }
+
+    const fn max_signed_hex() -> i32 {
+        if NUM_DIGITS == 1 {
+            15 // No space for minus sign in 1-digit display
+        } else {
+            (Self::const_pow(16, (NUM_DIGITS - 1) as u32) - 1) as i32
+        }
+    }
 
     /// Create a new AS1115 instance with the given I2C interface.
     pub fn new(i2c: I2C) -> Self {
@@ -104,7 +137,9 @@ where
         Ok(())
     }
 
-    /// Display janky ASCII characters on the seven-segment display.
+    /// Display best-effort ASCII characters on the seven-segment display.
+    /// Skips over any characters that do not have a valid segment mapping.
+    /// Truncates the input to fit NUM_DIGITS.
     pub fn display_ascii(&mut self, chars: &[u8]) -> Result<(), AS1115Error<E>> {
         let mut index = 0;
         for c in chars {
@@ -119,32 +154,95 @@ where
     }
 
     /// Display an integer value in decimal format on the seven-segment display.
+    /// Supports negative numbers by prepending a minus sign.
+    /// Returns InvalidValue if the value is too large to fit in the display.
     pub fn display_value<T>(&mut self, value: T) -> Result<(), AS1115Error<E>>
     where
         T: ToPrimitive,
     {
-        let mut num = value.to_u32().ok_or(AS1115Error::InvalidValue)?;
-        for i in 0..NUM_DIGITS {
-            self.set_digit_segment_data(NUM_DIGITS - 1 - i, NUMBERS[(num % 10) as usize])?;
+        let signed_value = value.to_i32().ok_or(AS1115Error::InvalidValue)?;
+
+        // Check if value will fit
+        if signed_value >= 0 {
+            if signed_value as u32 > Self::max_unsigned_decimal() {
+                return Err(AS1115Error::InvalidValue);
+            }
+        } else {
+            if -signed_value > Self::max_signed_decimal() {
+                return Err(AS1115Error::InvalidValue);
+            }
+        }
+
+        let is_negative = signed_value < 0;
+        let mut num = signed_value.unsigned_abs();
+
+        let mut digit_index = NUM_DIGITS;
+
+        while digit_index > 0 && (num > 0 || digit_index == NUM_DIGITS) {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, NUMBERS[(num % 10) as usize])?;
             num /= 10;
         }
+
+        if is_negative {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, MINUS_SIGN)?;
+        }
+
+        while digit_index > 0 {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, 0)?;
+        }
+
         Ok(())
     }
 
     /// Display an integer value in hexadecimal format on the seven-segment display.
+    /// Supports negative numbers by prepending a minus sign.
+    /// Returns InvalidValue if the number is too large to fit in the display.
     pub fn display_hex_value<T>(&mut self, value: T) -> Result<(), AS1115Error<E>>
     where
         T: ToPrimitive,
     {
-        let mut num = value.to_u32().ok_or(AS1115Error::InvalidValue)?;
-        for i in 0..NUM_DIGITS {
-            self.set_digit_segment_data(NUM_DIGITS - 1 - i, NUMBERS[(num % 16) as usize])?;
+        let signed_value = value.to_i32().ok_or(AS1115Error::InvalidValue)?;
+
+        // Check if value will fit
+        if signed_value >= 0 {
+            if signed_value as u32 > Self::max_unsigned_hex() {
+                return Err(AS1115Error::InvalidValue);
+            }
+        } else {
+            if -signed_value > Self::max_signed_hex() {
+                return Err(AS1115Error::InvalidValue);
+            }
+        }
+
+        let is_negative = signed_value < 0;
+        let mut num = signed_value.unsigned_abs();
+
+        let mut digit_index = NUM_DIGITS;
+
+        while digit_index > 0 && (num > 0 || digit_index == NUM_DIGITS) {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, NUMBERS[(num % 16) as usize])?;
             num /= 16;
         }
+
+        if is_negative {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, MINUS_SIGN)?;
+        }
+
+        while digit_index > 0 {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, 0)?;
+        }
+
         Ok(())
     }
 
     /// Display raw segment data on the seven-segment display.
+    /// Truncates extra segment data beyond NUM_DIGITS.
     pub fn display_segments(&mut self, segments: &[u8]) -> Result<(), AS1115Error<E>> {
         for (index, &segment) in segments.iter().enumerate() {
             self.set_digit_segment_data(index as u8, segment)?;
@@ -169,15 +267,24 @@ where
     }
 
     /// Set a specific digit to display an ASCII character.
+    /// Returns InvalidLocation if the digit index is out of bounds.
+    /// Returns InvalidValue if the character does not have a valid segment mapping.
     pub fn set_digit_ascii_char(&mut self, digit: u8, char: u8) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
         }
+        
         let segments = ascii_to_segment(char);
+        if segments == 0 {
+            return Err(AS1115Error::InvalidValue);
+        }
+
         self.set_digit_segment_data(digit, segments)
     }
 
     /// Set a specific digit to display a hexadecimal digit.
+    /// Returns InvalidLocation if the digit index is out of bounds.
+    /// Returns InvalidValue if the value is not a valid hexadecimal digit (0-15).
     pub fn set_digit_hex_value(&mut self, digit: u8, value: u8) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
@@ -190,7 +297,12 @@ where
     }
 
     /// Set a specific digit to display custom segment data.
-    pub fn set_digit_segment_data(&mut self, digit: u8, segment_data: u8) -> Result<(), AS1115Error<E>> {
+    /// Returns InvalidLocation if the digit index is out of bounds.
+    pub fn set_digit_segment_data(
+        &mut self,
+        digit: u8,
+        segment_data: u8,
+    ) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
         }
@@ -199,6 +311,8 @@ where
     }
 
     /// Set a specific digit to display a decimal digit (0-9).
+    /// Returns InvalidLocation if the digit index is out of bounds.
+    /// Returns InvalidValue if the value is not a valid decimal digit (0-9).
     pub fn set_digit_value(&mut self, digit: u8, value: u8) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
@@ -211,6 +325,7 @@ where
     }
 
     /// Set the global intensity for all digits.
+    /// Returns InvalidValue if the intensity value is out of range.
     pub fn set_intensity(&mut self, intensity: u8) -> Result<(), AS1115Error<E>> {
         if intensity > MAX_INTENSITY {
             return Err(AS1115Error::InvalidValue);
@@ -223,6 +338,8 @@ where
     }
 
     /// Set the intensity for a specific digit.
+    /// Returns InvalidLocation if the digit index is out of bounds.
+    /// Returns InvalidValue if the intensity value is out of range.
     pub fn set_digit_intensity(&mut self, digit: u8, intensity: u8) -> Result<(), AS1115Error<E>> {
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
@@ -267,6 +384,7 @@ where
     }
 
     /// Tests whether external resistor Rset is open.
+    /// Returns true if Rset is detected as open, false otherwise.
     pub fn rset_test_open(&mut self) -> Result<bool, AS1115Error<E>> {
         Ok((self.read_register(register::DISPLAY_TEST_MODE)?
             & register::display_test_mode::RSET_OPEN)
@@ -274,6 +392,7 @@ where
     }
 
     /// Tests whether external resistor Rset is shorted.
+    /// Returns true if Rset is detected as shorted, false otherwise.
     pub fn rset_test_short(&mut self) -> Result<bool, AS1115Error<E>> {
         Ok((self.read_register(register::DISPLAY_TEST_MODE)?
             & register::display_test_mode::RSET_SHORT)

@@ -1,7 +1,7 @@
 pub const DEFAULT_ADDRESS: u8 = 0x00;
 pub const MAX_DIGITS: u8 = 8;
-pub const MAX_INTENSITY: u8 = 15; // 4 bits
-                                  //pub const DOT_MASK: u8 = 0x80;
+pub const MAX_INTENSITY: u8 = 15;
+pub const MINUS_SIGN: u8 = 0x01;
 pub const NUMBERS: [u8; 16] = [
     0x7E, 0x30, 0x6D, 0x79, 0x33, 0x5B, 0x5F, 0x70, 0x7F, 0x7B, 0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47,
 ];
@@ -69,11 +69,6 @@ pub mod register {
         pub const SYNC: u8 = 0x40; // bit 6: synchronizes blinking on the rising edge of pin LD/CS
         pub const BLINK_START: u8 = 0x80; // bit 7: starts blinking with display phase enabled
     }
-
-    // pub mod display_test_mode {
-    //     pub const DISPLAY_TEST_MODE: u8 = 0x01;
-    //     pub const NORMAL_OPERATION: u8 = 0x00;
-    // }
 
     pub mod self_addressing {
         pub const FACTORY_SET_ADDR: u8 = 0x00;

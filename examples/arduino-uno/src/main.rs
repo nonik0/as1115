@@ -52,9 +52,16 @@ fn main() -> ! {
     ufmt::uwriteln!(&mut serial, "Counting up...").unwrap_infallible();
     let mut i: usize = 0;
     loop {
-        display.display_value(i).unwrap();
-        i += 1;
+        if let Err(e) = display.display_value(i) {
+            ufmt::uwriteln!(&mut serial, "Count value overflowed!").unwrap_infallible();
+            i = 0;
+            display.display_ascii("error").unwrap();
+            arduino_hal::delay_ms(200);
+        }
+        else {
+            i += 1;
+        }
 
-        arduino_hal::delay_ms(300);
+        arduino_hal::delay_ms(10);
     }
 }

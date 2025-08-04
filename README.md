@@ -36,3 +36,7 @@ Or to specify an address using the self-addressing feature (also needs pins wire
 const NUM_DIGITS: u8 = 8;
 const DIGITS_I2C_ADDR: u8 = 0x01;
 let mut display: AS1115<_, NUM_DIGITS> = as1115::AS1115::new_with_addr(HalI2CDevice, DIGITS_I2C_ADDR);
+
+## TODO
+- [ ] Handle edge cases better for NUM_DIGITS=1
+- [ ] Implement rest of hardware self-testing functionality
