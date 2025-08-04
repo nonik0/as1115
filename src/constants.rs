@@ -10,7 +10,6 @@ pub const LETTERS: [u8; 26] = [
     0x73, 0x05, 0x5B, 0x0F, 0x3E, 0x1C, 0x2A, 0x49, 0x3B, 0x25,
 ];
 
-#[allow(dead_code)]
 pub mod segments {
     pub const DP: u8 = 0x80; // Decimal point
     pub const A: u8 = 0x40; // Segment A (top)
@@ -22,7 +21,6 @@ pub mod segments {
     pub const G: u8 = 0x01; // Segment G (middle)
 }
 
-#[allow(dead_code)]
 pub mod register {
     pub const DIGIT_OFFSET: u8 = 0x01; // Digit0 - Digit7
     pub const DECODE_MODE: u8 = 0x09;
