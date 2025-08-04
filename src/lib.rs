@@ -254,6 +254,86 @@ where
         Ok(())
     }
 
+    /// Display a floating-point decimal value on the seven-segment display.
+    /// Supports negative numbers by prepending a minus sign.
+    /// Returns InvalidValue if the value won't fit with the given precision or if the precision value is invalid (0 or > NUM_DIGITS).
+    #[cfg(feature = "display_float_value")]
+    pub fn display_float_value<T>(&mut self, value: T, precision: u8) -> Result<(), AS1115Error<E>>
+    where
+        T: ToPrimitive,
+    {
+        let float_val = value.to_f32().ok_or(AS1115Error::InvalidValue)?;
+
+        if precision < 1 || precision >= NUM_DIGITS || !float_val.is_finite() {
+            return Err(AS1115Error::InvalidValue);
+        }
+
+        let is_negative = float_val.is_sign_negative();
+        let abs_val = float_val.abs();
+
+        // Check value bounds
+        let integer_digits = if abs_val < 1.0 {
+            1
+        } else {
+            let mut temp = abs_val as u32;
+            let mut digits = 0;
+            while temp > 0 {
+                digits += 1;
+                temp /= 10;
+            }
+            digits
+        };
+        let total_digits = (if is_negative { 1 } else { 0 }) + integer_digits + precision as u8;
+        if total_digits > NUM_DIGITS {
+            return Err(AS1115Error::InvalidValue);
+        }
+
+        // Scale number to integer value for formatting
+        let mut digit_index = NUM_DIGITS;
+        let mut scale_factor = 1.0f32;
+        for _ in 0..precision {
+            scale_factor *= 10.0;
+        }
+        let rounded_val = abs_val * scale_factor + 0.5;
+        let mut digits = rounded_val as u32;
+
+        for _ in 0..precision {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, NUMBERS[(digits % 10) as usize])?;
+            digits /= 10;
+        }
+
+        if digits == 0 {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, NUMBERS[0] | segments::DP)?;
+        } else {
+            let mut first_digit = true;
+            while digits > 0 {
+                // possible for rounding to cause overflow
+                if digit_index == 0 {
+                    return Err(AS1115Error::InvalidValue);
+                }
+
+                digit_index -= 1;
+
+                let mut segment_data = NUMBERS[digits as usize % 10];
+                if first_digit {
+                    segment_data |= segments::DP;
+                    first_digit = false;
+                }
+                self.set_digit_segment_data(digit_index, segment_data)?;
+                digits /= 10;
+            }
+        }
+
+        if is_negative {
+            digit_index -= 1;
+            self.set_digit_segment_data(digit_index, MINUS_SIGN)?;
+        }
+
+        Ok(())
+    }
+
     /// Display raw segment data on the seven-segment display.
     /// Truncates extra segment data beyond NUM_DIGITS.
     pub fn display_segments(&mut self, segments: &[u8]) -> Result<(), AS1115Error<E>> {
@@ -434,3 +514,4 @@ where
         Ok(())
     }
 }
+

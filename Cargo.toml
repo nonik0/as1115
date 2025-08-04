@@ -9,9 +9,11 @@ license = "MIT"
 repository = "https://github.com/nonik0/as1115"
 readme = "README.md"
 
+[features]
+default = []
+display_float_value = []
+
 [dependencies]
 embedded-hal = "1.0.0"
 num-traits = { version = "0.2.19", default-features = false }
 
-#[[example]]
-#name = "uno"
