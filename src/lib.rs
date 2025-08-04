@@ -139,16 +139,29 @@ where
 
     /// Display best-effort ASCII characters on the seven-segment display.
     /// Skips over any characters that do not have a valid segment mapping.
+    /// Decimal points are included using the seven-segment display's DP segment.
     /// Truncates the input to fit NUM_DIGITS.
     pub fn display_ascii(&mut self, chars: &[u8]) -> Result<(), AS1115Error<E>> {
         let mut index = 0;
-        for c in chars {
-            let segment_data = ascii_to_segment(*c);
+        let mut i = 0;
+
+        while i < chars.len() && index < NUM_DIGITS {
+            let c = chars[i];
+            let mut segment_data = ascii_to_segment(c);
+
+            if segment_data == 0 {
+                i += 1;
+                continue;
+            }
+
+            if i + 1 < chars.len() && chars[i + 1] == b'.' {
+                segment_data |= segments::DP;
+                i += 1;
+            }
+
             self.set_digit_segment_data(index, segment_data)?;
             index += 1;
-            if index >= NUM_DIGITS {
-                break;
-            }
+            i += 1;
         }
         Ok(())
     }
@@ -273,7 +286,7 @@ where
         if digit >= NUM_DIGITS {
             return Err(AS1115Error::InvalidLocation(digit));
         }
-        
+
         let segments = ascii_to_segment(char);
         if segments == 0 {
             return Err(AS1115Error::InvalidValue);

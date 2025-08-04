@@ -3,6 +3,7 @@
 
 use arduino_hal::prelude::*;
 use as1115::AS1115;
+use as1115::AS1115Error;
 use panic_halt as _;
 
 const NUM_DIGITS: u8 = 3; // AS1115 support 1-8 seven-segment digits
@@ -52,11 +53,12 @@ fn main() -> ! {
     ufmt::uwriteln!(&mut serial, "Counting up...").unwrap_infallible();
     let mut i: usize = 0;
     loop {
-        if let Err(e) = display.display_value(i) {
+        if let Err(AS1115Error::InvalidValue) = display.display_value(i) {
             ufmt::uwriteln!(&mut serial, "Count value overflowed!").unwrap_infallible();
+            display.display_ascii(b"error").unwrap();
+
             i = 0;
-            display.display_ascii("error").unwrap();
-            arduino_hal::delay_ms(200);
+            arduino_hal::delay_ms(500);
         }
         else {
             i += 1;
