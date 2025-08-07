@@ -8,12 +8,13 @@ use num_traits::ToPrimitive;
 
 /// Convert an ASCII character to the corresponding seven-segment display encoding.
 /// Supports only alphanumeric characters (0-9, a-z, A-Z).
-pub fn ascii_to_segment(c: u8) -> u8 {
+pub fn ascii_to_segment(c: u8) -> Option<u8> {
     match c {
-        b'0'..=b'9' => NUMBERS[(c - b'0') as usize],
-        b'a'..=b'z' => LETTERS[(c - b'a') as usize],
-        b'A'..=b'Z' => LETTERS[(c - b'A') as usize],
-        _ => 0,
+        b'0'..=b'9' => Some(NUMBERS[(c - b'0') as usize]),
+        b'a'..=b'z' => Some(LETTERS[(c - b'a') as usize]),
+        b'A'..=b'Z' => Some(LETTERS[(c - b'A') as usize]),
+        b' ' => Some(0),
+        _ => None,
     }
 }
 
@@ -147,13 +148,14 @@ where
 
         while i < chars.len() && index < NUM_DIGITS {
             let c = chars[i];
-            let mut segment_data = ascii_to_segment(c);
+            let segment_data = ascii_to_segment(c);
 
-            if segment_data == 0 {
+            if segment_data.is_none() {
                 i += 1;
                 continue;
             }
 
+            let mut segment_data = segment_data.unwrap();
             if i + 1 < chars.len() && chars[i + 1] == b'.' {
                 segment_data |= segments::DP;
                 i += 1;
@@ -368,11 +370,11 @@ where
         }
 
         let segments = ascii_to_segment(char);
-        if segments == 0 {
+        if segments.is_none() {
             return Err(AS1115Error::InvalidValue);
         }
 
-        self.set_digit_segment_data(digit, segments)
+        self.set_digit_segment_data(digit, segments.unwrap())
     }
 
     /// Set a specific digit to display a hexadecimal digit.
@@ -514,4 +516,3 @@ where
         Ok(())
     }
 }
-
